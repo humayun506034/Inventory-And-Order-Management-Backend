@@ -33,6 +33,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+      if (exception.code === 'P2002') {
+        response.status(HttpStatus.CONFLICT).json({
+          success: false,
+          statusCode: HttpStatus.CONFLICT,
+          message: 'Duplicate value already exists.',
+          code: exception.code,
+        });
+        return;
+      }
+
       const statusCode = HttpStatus.SERVICE_UNAVAILABLE;
       response.status(statusCode).json({
         success: false,

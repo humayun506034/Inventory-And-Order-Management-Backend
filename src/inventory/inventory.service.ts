@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -38,6 +39,20 @@ export class InventoryService {
     actorName: string,
     actorId?: string,
   ) {
+    const existingCategory = await this.prisma.category.findFirst({
+      where: {
+        ownerId,
+        name: {
+          equals: dto.name.trim(),
+          mode: 'insensitive',
+        },
+      },
+    });
+
+    if (existingCategory) {
+      throw new ConflictException('You already have a category with this name.');
+    }
+
     const category = await this.prisma.category.create({
       data: {
         name: dto.name.trim(),
@@ -77,6 +92,20 @@ export class InventoryService {
 
     if (!category) {
       throw new NotFoundException('Category not found.');
+    }
+
+    const existingProduct = await this.prisma.product.findFirst({
+      where: {
+        ownerId,
+        name: {
+          equals: dto.name.trim(),
+          mode: 'insensitive',
+        },
+      },
+    });
+
+    if (existingProduct) {
+      throw new ConflictException('You already have a product with this name.');
     }
 
     const product = await this.prisma.product.create({
