@@ -5,6 +5,17 @@ import { AppModule } from './app.module';
 
 export async function createNestApp(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
+  const httpAdapter = app.getHttpAdapter().getInstance();
+
+  httpAdapter.get('/', (_req, res) => {
+    res.status(200).json({
+      success: true,
+      statusCode: 200,
+      message: 'Smart Inventory backend is running.',
+      apiBaseUrl: '/api',
+    });
+  });
+
   app.use('/favicon.ico', (_req, res) => res.status(204).end());
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalPipes(
@@ -35,6 +46,7 @@ async function bootstrap() {
   const app = await createNestApp();
   await app.listen(process.env.PORT || 3000);
 }
+
 
 if (require.main === module) {
   void bootstrap();
