@@ -33,3 +33,9 @@ export class LoginDto {
   @MinLength(8)
   password: string;
 }
+
+export class DemoLoginDto {
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
+}

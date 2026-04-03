@@ -20,21 +20,20 @@ export class AuthService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const email = this.configService.get<string>('DEMO_ADMIN_EMAIL');
-    const password = this.configService.get<string>('DEMO_ADMIN_PASSWORD');
-    if (!email || !password) return;
-
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) return;
-
-    await this.prisma.user.create({
-      data: {
-        email,
-        name: 'Demo Admin',
-        role: UserRole.ADMIN,
-        passwordHash: await bcrypt.hash(password, 10),
-      },
-    });
+    await Promise.all([
+      this.ensureDemoUser(
+        UserRole.ADMIN,
+        this.configService.get<string>('DEMO_ADMIN_EMAIL') ?? 'admin@gmail.com',
+        this.configService.get<string>('DEMO_ADMIN_PASSWORD') ?? 'Admin12345',
+        'Demo Admin',
+      ),
+      this.ensureDemoUser(
+        UserRole.MANAGER,
+        this.configService.get<string>('DEMO_MANAGER_EMAIL') ?? 'manager@gmail.com',
+        this.configService.get<string>('DEMO_MANAGER_PASSWORD') ?? 'Manager12345',
+        'Demo Manager',
+      ),
+    ]);
   }
 
   async signup(dto: SignupDto) {
@@ -73,12 +72,15 @@ export class AuthService implements OnModuleInit {
     return this.buildAuthResponse(user);
   }
 
-  demoLogin() {
+  demoLogin(role: UserRole = UserRole.ADMIN) {
+    const isAdmin = role === UserRole.ADMIN;
     return this.login({
-      email:
-        this.configService.get<string>('DEMO_ADMIN_EMAIL') ?? 'admin@gmail.com',
-      password:
-        this.configService.get<string>('DEMO_ADMIN_PASSWORD') ?? 'Admin12345',
+      email: isAdmin
+        ? this.configService.get<string>('DEMO_ADMIN_EMAIL') ?? 'admin@gmail.com'
+        : this.configService.get<string>('DEMO_MANAGER_EMAIL') ?? 'manager@gmail.com',
+      password: isAdmin
+        ? this.configService.get<string>('DEMO_ADMIN_PASSWORD') ?? 'Admin12345'
+        : this.configService.get<string>('DEMO_MANAGER_PASSWORD') ?? 'Manager12345',
     });
   }
 
@@ -99,11 +101,40 @@ export class AuthService implements OnModuleInit {
       accessToken,
       user,
       demoCredentials: {
-        email:
-          this.configService.get<string>('DEMO_ADMIN_EMAIL') ?? 'admin@gmail.com',
-        password:
-          this.configService.get<string>('DEMO_ADMIN_PASSWORD') ?? 'Admin12345',
+        admin: {
+          email:
+            this.configService.get<string>('DEMO_ADMIN_EMAIL') ?? 'admin@gmail.com',
+          password:
+            this.configService.get<string>('DEMO_ADMIN_PASSWORD') ?? 'Admin12345',
+        },
+        manager: {
+          email:
+            this.configService.get<string>('DEMO_MANAGER_EMAIL') ?? 'manager@gmail.com',
+          password:
+            this.configService.get<string>('DEMO_MANAGER_PASSWORD') ?? 'Manager12345',
+        },
       },
     };
+  }
+
+  private async ensureDemoUser(
+    role: UserRole,
+    email: string,
+    password: string,
+    name: string,
+  ) {
+    if (!email || !password) return;
+
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) return;
+
+    await this.prisma.user.create({
+      data: {
+        email,
+        name,
+        role,
+        passwordHash: await bcrypt.hash(password, 10),
+      },
+    });
   }
 }

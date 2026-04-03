@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { OrderStatus, Prisma, ProductStatus } from '@prisma/client';
+import { OrderStatus, Prisma, ProductStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateCategoryDto,
@@ -19,15 +19,15 @@ import {
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getBootstrapData(userId: string) {
+  async getBootstrapData(actor: { sub: string; role: UserRole }) {
     const [categories, products, orders, restockQueue, dashboard, activities] =
       await Promise.all([
-        this.getCategories(userId),
-        this.getProducts(userId),
-        this.getOrders(userId, {}),
-        this.getRestockQueue(userId),
-        this.getDashboard(userId),
-        this.getActivity(userId),
+        this.getCategories(actor),
+        this.getProducts(actor),
+        this.getOrders(actor, {}),
+        this.getRestockQueue(actor),
+        this.getDashboard(actor),
+        this.getActivity(actor),
       ]);
 
     return { categories, products, orders, restockQueue, dashboard, activities };
@@ -72,11 +72,14 @@ export class InventoryService {
     return category;
   }
 
-  getCategories(userId: string) {
+  getCategories(actor: { sub: string; role: UserRole }) {
     return this.prisma.category.findMany({
-      where: { ownerId: userId },
+      where: this.categoryScope(actor),
       orderBy: { name: 'asc' },
-      include: { _count: { select: { products: true } } },
+      include: {
+        owner: { select: { id: true, name: true, email: true, role: true } },
+        _count: { select: { products: true } },
+      },
     });
   }
 
@@ -136,11 +139,19 @@ export class InventoryService {
     return product;
   }
 
-  getProducts(userId: string) {
+  getProducts(actor: { sub: string; role: UserRole }) {
     return this.prisma.product.findMany({
-      where: { ownerId: userId },
+      where: this.productScope(actor),
       orderBy: [{ stockQuantity: 'asc' }, { name: 'asc' }],
-      include: { category: true },
+      include: {
+        owner: { select: { id: true, name: true, email: true, role: true } },
+        category: {
+          include: {
+            owner: { select: { id: true, name: true, email: true, role: true } },
+            _count: { select: { products: true } },
+          },
+        },
+      },
     });
   }
 
@@ -150,9 +161,10 @@ export class InventoryService {
     ownerId: string,
     actorName: string,
     actorId?: string,
+    actorRole: UserRole = UserRole.MANAGER,
   ) {
     const product = await this.prisma.product.findFirst({
-      where: { id, ownerId },
+      where: { id, ...(actorRole === UserRole.ADMIN ? {} : { ownerId }) },
     });
 
     if (!product) {
@@ -165,7 +177,15 @@ export class InventoryService {
         stockQuantity: { increment: dto.quantity },
         status: ProductStatus.ACTIVE,
       },
-      include: { category: true },
+      include: {
+        owner: { select: { id: true, name: true, email: true, role: true } },
+        category: {
+          include: {
+            owner: { select: { id: true, name: true, email: true, role: true } },
+            _count: { select: { products: true } },
+          },
+        },
+      },
     });
 
     await this.logActivity(
@@ -180,7 +200,7 @@ export class InventoryService {
     return updated;
   }
 
-  async createOrder(dto: CreateOrderDto, actor: { id: string; name: string }) {
+  async createOrder(dto: CreateOrderDto, actor: { id: string; name: string; role: UserRole }) {
     const uniqueIds = new Set(dto.items.map((item) => item.productId));
     if (uniqueIds.size !== dto.items.length) {
       throw new BadRequestException('This product is already added to the order.');
@@ -189,7 +209,7 @@ export class InventoryService {
     const products = await this.prisma.product.findMany({
       where: {
         id: { in: dto.items.map((item) => item.productId) },
-        ownerId: actor.id,
+        ...(actor.role === UserRole.ADMIN ? {} : { ownerId: actor.id }),
       },
     });
 
@@ -263,16 +283,16 @@ export class InventoryService {
       actor.id,
     );
 
-    return this.getOrderById(order.id, actor.id);
+    return this.getOrderById(order.id, actor);
   }
 
   async updateOrderStatus(
     id: string,
     dto: UpdateOrderStatusDto,
-    actor: { id: string; name: string },
+    actor: { id: string; name: string; role: UserRole },
   ) {
     const order = await this.prisma.order.findFirst({
-      where: { id, createdById: actor.id },
+      where: { id, ...this.orderScope({ sub: actor.id, role: actor.role }) },
     });
 
     if (!order) {
@@ -293,12 +313,12 @@ export class InventoryService {
       actor.id,
     );
 
-    return this.getOrderById(id, actor.id);
+    return this.getOrderById(id, actor);
   }
 
-  async cancelOrder(id: string, actor: { id: string; name: string }) {
+  async cancelOrder(id: string, actor: { id: string; name: string; role: UserRole }) {
     const order = await this.prisma.order.findFirst({
-      where: { id, createdById: actor.id },
+      where: { id, ...this.orderScope({ sub: actor.id, role: actor.role }) },
       include: { items: true },
     });
 
@@ -334,12 +354,12 @@ export class InventoryService {
       );
     }
 
-    return this.getOrderById(id, actor.id);
+    return this.getOrderById(id, actor);
   }
 
-  getOrders(userId: string, query: OrderQueryDto) {
+  getOrders(actor: { sub: string; role: UserRole }, query: OrderQueryDto) {
     const where: Prisma.OrderWhereInput = {
-      createdById: userId,
+      ...this.orderScope(actor),
     };
 
     if (query.status) {
@@ -361,7 +381,15 @@ export class InventoryService {
         items: {
           include: {
             product: {
-              include: { category: true },
+              include: {
+                owner: { select: { id: true, name: true, email: true, role: true } },
+                category: {
+                  include: {
+                    owner: { select: { id: true, name: true, email: true, role: true } },
+                    _count: { select: { products: true } },
+                  },
+                },
+              },
             },
           },
         },
@@ -369,11 +397,19 @@ export class InventoryService {
     });
   }
 
-  async getRestockQueue(userId: string) {
+  async getRestockQueue(actor: { sub: string; role: UserRole }) {
     const products = await this.prisma.product.findMany({
-      where: { ownerId: userId },
+      where: this.productScope(actor),
       orderBy: [{ stockQuantity: 'asc' }, { updatedAt: 'desc' }],
-      include: { category: true },
+      include: {
+        owner: { select: { id: true, name: true, email: true, role: true } },
+        category: {
+          include: {
+            owner: { select: { id: true, name: true, email: true, role: true } },
+            _count: { select: { products: true } },
+          },
+        },
+      },
     });
 
     return products
@@ -390,7 +426,7 @@ export class InventoryService {
       }));
   }
 
-  async getDashboard(userId: string) {
+  async getDashboard(actor: { sub: string; role: UserRole }) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date(start);
@@ -405,34 +441,38 @@ export class InventoryService {
       queue,
     ] = await Promise.all([
       this.prisma.order.count({
-        where: { createdAt: { gte: start, lt: end }, createdById: userId },
+        where: { createdAt: { gte: start, lt: end }, ...this.orderScope(actor) },
       }),
       this.prisma.order.count({
         where: {
-          createdById: userId,
+          ...this.orderScope(actor),
           status: { in: [OrderStatus.PENDING, OrderStatus.CONFIRMED] },
         },
       }),
       this.prisma.order.count({
         where: {
-          createdById: userId,
+          ...this.orderScope(actor),
           status: { in: [OrderStatus.SHIPPED, OrderStatus.DELIVERED] },
         },
       }),
       this.prisma.order.aggregate({
         _sum: { totalPrice: true },
         where: {
-          createdById: userId,
+          ...this.orderScope(actor),
           createdAt: { gte: start, lt: end },
           status: { not: OrderStatus.CANCELLED },
         },
       }),
       this.prisma.product.findMany({
-        where: { ownerId: userId },
+        where: this.productScope(actor),
         orderBy: [{ stockQuantity: 'asc' }, { name: 'asc' }],
         take: 6,
+        include: {
+          owner: { select: { id: true, name: true, email: true, role: true } },
+          category: { select: { id: true, name: true } },
+        },
       }),
-      this.getRestockQueue(userId),
+      this.getRestockQueue(actor),
     ]);
 
     return {
@@ -445,34 +485,59 @@ export class InventoryService {
         id: product.id,
         name: product.name,
         stockQuantity: product.stockQuantity,
+        ownerName: product.owner.name,
+        categoryName: product.category.name,
         label:
           product.stockQuantity <= product.minStockThreshold ? 'Low Stock' : 'OK',
       })),
     };
   }
 
-  getActivity(userId: string, limit = 10) {
+  getActivity(actor: { sub: string; role: UserRole }, limit = 10) {
     return this.prisma.activityLog.findMany({
-      where: { actorId: userId },
+      where: actor.role === UserRole.ADMIN ? {} : { actorId: actor.sub },
       orderBy: { createdAt: 'desc' },
       take: limit,
+      include: {
+        actor: { select: { id: true, name: true, email: true, role: true } },
+      },
     });
   }
 
-  private getOrderById(id: string, userId: string) {
+  private getOrderById(id: string, actor: { id: string; role: UserRole }) {
     return this.prisma.order.findFirst({
-      where: { id, createdById: userId },
+      where: { id, ...this.orderScope({ sub: actor.id, role: actor.role }) },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
         items: {
           include: {
             product: {
-              include: { category: true },
+              include: {
+                owner: { select: { id: true, name: true, email: true, role: true } },
+                category: {
+                  include: {
+                    owner: { select: { id: true, name: true, email: true, role: true } },
+                    _count: { select: { products: true } },
+                  },
+                },
+              },
             },
           },
         },
       },
     });
+  }
+
+  private categoryScope(actor: { sub: string; role: UserRole }): Prisma.CategoryWhereInput {
+    return actor.role === UserRole.ADMIN ? {} : { ownerId: actor.sub };
+  }
+
+  private productScope(actor: { sub: string; role: UserRole }): Prisma.ProductWhereInput {
+    return actor.role === UserRole.ADMIN ? {} : { ownerId: actor.sub };
+  }
+
+  private orderScope(actor: { sub: string; role: UserRole }): Prisma.OrderWhereInput {
+    return actor.role === UserRole.ADMIN ? {} : { createdById: actor.sub };
   }
 
   private logActivity(

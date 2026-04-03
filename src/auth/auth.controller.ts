@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LoginDto, SignupDto } from './dto/auth.dto';
+import { DemoLoginDto, LoginDto, SignupDto } from './dto/auth.dto';
 import { AuthGuard } from '../common/guards/auth.guard';
 import type { AuthenticatedRequest } from '../common/guards/auth.guard';
 
@@ -19,8 +19,8 @@ export class AuthController {
   }
 
   @Post('demo-login')
-  demoLogin() {
-    return this.authService.demoLogin();
+  demoLogin(@Body() dto: DemoLoginDto) {
+    return this.authService.demoLogin(dto.role);
   }
 
   @Get('me')

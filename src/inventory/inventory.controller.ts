@@ -28,17 +28,17 @@ export class InventoryController {
 
   @Get('bootstrap')
   bootstrap(@Req() req: AuthenticatedRequest) {
-    return this.inventoryService.getBootstrapData(req.user.sub);
+    return this.inventoryService.getBootstrapData(req.user);
   }
 
   @Get('dashboard')
   dashboard(@Req() req: AuthenticatedRequest) {
-    return this.inventoryService.getDashboard(req.user.sub);
+    return this.inventoryService.getDashboard(req.user);
   }
 
   @Get('categories')
   categories(@Req() req: AuthenticatedRequest) {
-    return this.inventoryService.getCategories(req.user.sub);
+    return this.inventoryService.getCategories(req.user);
   }
 
   @Post('categories')
@@ -56,7 +56,7 @@ export class InventoryController {
 
   @Get('products')
   products(@Req() req: AuthenticatedRequest) {
-    return this.inventoryService.getProducts(req.user.sub);
+    return this.inventoryService.getProducts(req.user);
   }
 
   @Post('products')
@@ -84,17 +84,18 @@ export class InventoryController {
       req.user.sub,
       req.user.name,
       req.user.sub,
+      req.user.role,
     );
   }
 
   @Get('restock-queue')
   restockQueue(@Req() req: AuthenticatedRequest) {
-    return this.inventoryService.getRestockQueue(req.user.sub);
+    return this.inventoryService.getRestockQueue(req.user);
   }
 
   @Get('orders')
   orders(@Query() query: OrderQueryDto, @Req() req: AuthenticatedRequest) {
-    return this.inventoryService.getOrders(req.user.sub, query);
+    return this.inventoryService.getOrders(req.user, query);
   }
 
   @Post('orders')
@@ -102,6 +103,7 @@ export class InventoryController {
     return this.inventoryService.createOrder(dto, {
       id: req.user.sub,
       name: req.user.name,
+      role: req.user.role,
     });
   }
 
@@ -114,6 +116,7 @@ export class InventoryController {
     return this.inventoryService.updateOrderStatus(id, dto, {
       id: req.user.sub,
       name: req.user.name,
+      role: req.user.role,
     });
   }
 
@@ -122,11 +125,12 @@ export class InventoryController {
     return this.inventoryService.cancelOrder(id, {
       id: req.user.sub,
       name: req.user.name,
+      role: req.user.role,
     });
   }
 
   @Get('activity')
   activity(@Query('limit') limit: string | undefined, @Req() req: AuthenticatedRequest) {
-    return this.inventoryService.getActivity(req.user.sub, limit ? Number(limit) : 10);
+    return this.inventoryService.getActivity(req.user, limit ? Number(limit) : 10);
   }
 }
