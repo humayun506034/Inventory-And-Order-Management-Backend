@@ -16,9 +16,7 @@ describe('AppController', () => {
 
   describe('root', () => {
     it('should return server message', () => {
-      expect(appController.getHello()).toBe(
-        'Appoinment Management Server Running...',
-      );
+      expect(appController.getHello()).toBe('Smart Inventory API is running');
     });
   });
 });

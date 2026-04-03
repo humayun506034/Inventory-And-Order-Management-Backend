@@ -1,4 +1,3 @@
-import { WsAdapter } from '@nestjs/platform-ws';
 import { ValidationPipe, INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { GlobalExceptionFilter } from 'src/common/filters/global-exception.filter';
@@ -7,7 +6,6 @@ import { AppModule } from './app.module';
 export async function createNestApp(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
   app.use('/favicon.ico', (_req, res) => res.status(204).end());
-  app.useWebSocketAdapter(new WsAdapter(app))
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
@@ -25,10 +23,10 @@ export async function createNestApp(): Promise<INestApplication> {
       'http://localhost:5174',
       'http://localhost:5175',
       'http://localhost:5176',
-      'https://marcus-hein-alpha.vercel.app',
-      '*',
     ],
+    credentials: true,
   });
+  app.setGlobalPrefix('api');
 
   return app;
 }
